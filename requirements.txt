@@ -1,0 +1,3 @@
+git+https://github.com/seanpompea/kickshaws/#egg=kickshaws
+watchdog==0.8.3
+
