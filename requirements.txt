@@ -1,3 +1,4 @@
 git+https://github.com/seanpompea/kickshaws/#egg=kickshaws
 watchdog==0.8.3
+pymssql==2.1.3
 
