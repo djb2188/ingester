@@ -237,7 +237,7 @@ def main():
       def on_created(self, event):
         process_file(event.src_path)
     observe_subdirs_flag = False
-    observer.schedule(FSEHandler(), 'inbox', observe_subdirs_flag)
+    observer.schedule(FSEHandler(), inbox_dir, observe_subdirs_flag)
     observer.start()
     print 'observer started.' 
     try:
