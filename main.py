@@ -5,7 +5,8 @@ import time
 import json
 import csv
 import pymssql
-from watchdog.observers import Observer
+#from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 import kickshaws as ks # logging, email
 
@@ -228,7 +229,7 @@ def process_file(path):
 
 def main():
   print 'Starting main...'
-  observer = Observer()
+  observer = PollingObserver()
   try:
     if not do_startup_checks():
       print 'One or more startup checks failed'
