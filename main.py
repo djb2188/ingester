@@ -225,6 +225,7 @@ def process_file(path):
     print 'Processed ' + path + ' successfully!'
     send_success_email()
   except Exception, ex:
+    send_error_email('process_file: ' + str(ex))
     log.error(str(ex))
 
 def main():
