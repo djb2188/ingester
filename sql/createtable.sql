@@ -1,4 +1,4 @@
-CREATE TABLE [dm_aou].[dbo].[healthpro-wq] (
+CREATE TABLE [dm_aou].[dbo].[healthpro] (
   [rid] bigint not null identity primary key,
 	[PMI ID] VARCHAR(64) NULL, 
 	[Biobank ID] VARCHAR(64) NULL, 

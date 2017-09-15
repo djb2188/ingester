@@ -82,10 +82,12 @@ def ts():
 
 def del_file(f):
   os.remove(f)
+  log.info('Deleted ' + f)
   return True
 
 def move_file(src, dest):
   shutil.copy(src, dest)
+  log.info('Copied ' + src + ' to ' + dest)
   del_file(src)
   return True
 
@@ -94,6 +96,7 @@ def move_file(src, dest):
 
 def db_qy(qy):
   '''Run a SQL query. Returns list of maps.'''
+  log.info('About to run this query: ' + qy)
   with pymssql.connect(**db_info) as conn:
     cursor = conn.cursor(as_dict=True)
     cursor.execute(qy)
@@ -101,6 +104,7 @@ def db_qy(qy):
 
 def db_stmt(stmt):
   '''Execute a SQL DDL/DML statement. Returns bool.'''
+  log.info('About to run this statement: ' + qy)
   try:
     with pymssql.connect(**db_info) as conn:
       cursor = conn.cursor()
@@ -179,17 +183,22 @@ def standardize_healthpro_csv(fname):
   tmpfname = 'tmp' + str(ts()) + '.csv'
   lines = []
   with open(fname, 'r') as inn:
+    log.info('Opened ' + fname + ' for reading.')
     lines = [line for line in inn]
   with open(tmpfname, 'w') as out:
+    log.info('Opened ' + fname + ' for writing.')
     for i in range(len(lines)):
       if i not in [0, 1, len(lines)-1, len(lines)-2]:
         out.write(lines[i])
+  log.info('Successfully created ' + tmpfname) 
   return tmpfname
 
 def csv_to_data(fname):
   '''Returns a list of maps.'''
   with open(fname, 'r') as f:
+    log.info('Opened ' + fname)
     reader = csv.DictReader(f)
+    log.info('Successfully read ' + fname + ' into memory.')
     return [row for row in reader]
 
 def handle_csv(fname):
@@ -221,8 +230,11 @@ def load_data_into_db(table_name, data):
 def process_file(path):
   try:
     data = handle_csv(path)
+    log.info('Handled csv successfully; about to load into database.')
     load_data_into_db(db_table, data)
+    log.info('Successfully loaded into database.')
     print 'Processed ' + path + ' successfully!'
+    log.info('Processed ' + path + ' successfully!')
     send_success_email()
   except Exception, ex:
     send_error_email('process_file: ' + str(ex))
