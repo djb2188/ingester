@@ -104,7 +104,7 @@ def db_qy(qy):
 
 def db_stmt(stmt):
   '''Execute a SQL DDL/DML statement. Returns bool.'''
-  log.info('About to run this statement: ' + qy)
+  log.info('About to run this statement: ' + stmt)
   try:
     with pymssql.connect(**db_info) as conn:
       cursor = conn.cursor()
@@ -242,6 +242,8 @@ def process_file(path):
 
 def main():
   print 'Starting main...'
+  log.info('-------------------------------------------------------')
+  log.info('              healthproimporter starting...            ')
   observer = PollingObserver()
   try:
     if not do_startup_checks():
