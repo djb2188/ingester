@@ -58,12 +58,12 @@ https://github.com/seanpompea/healthproimporter
 ### Technical Links
 
 * Watchdog
- * https://pypi.python.org/pypi/watchdog
- * https://pythonhosted.org/watchdog/api.html#module-watchdog.events
- * https://pythonhosted.org/watchdog/api.html#module-watchdog.observers
- * https://stackoverflow.com/questions/24597025/using-python-watchdog-to-monitor-a-folder-but-when-i-rename-a-file-i-havent-b
- * https://pythonhosted.org/watchdog/api.html#watchdog.observers.polling.PollingObserver
+  * https://pypi.python.org/pypi/watchdog
+  * https://pythonhosted.org/watchdog/api.html#module-watchdog.events
+  * https://pythonhosted.org/watchdog/api.html#module-watchdog.observers
+  * https://stackoverflow.com/questions/24597025/using-python-watchdog-to-monitor-a-folder-but-when-i-rename-a-file-i-havent-b
+  * https://pythonhosted.org/watchdog/api.html#watchdog.observers.polling.PollingObserver
 
 * Unicode in Python 2
- * Overcoming frustration: Correctly using unicode in python2 -- https://pythonhosted.org/kitchen/unicode-frustrations.html
+  * Overcoming frustration: Correctly using unicode in python2 -- https://pythonhosted.org/kitchen/unicode-frustrations.html
 

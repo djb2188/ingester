@@ -48,6 +48,7 @@ sys.setdefaultencoding('utf-8')
 # Create log object.
 log = ks.create_logger('hpimporter.log', 'core')
 
+# TODO full table path in config file (not just name)
 # Load configuration info from config file.
 config_fname = 'enclave/healthproimporter_config.json'
 cfg = {}
