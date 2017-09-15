@@ -12,7 +12,7 @@ Written in Python 2.7, this software runs a server process. It watches for a CSV
 
 * Uses Python 2.7.10 or similar.
 * A *virtualenv* setup is recommended.
-* Ensure Python can talk to MY SQL Server (see:  https://github.com/seanpompea/pymssqlcheck)
+* Ensure Python can talk to MS SQL Server (see:  https://github.com/seanpompea/pymssqlcheck)
 
 After creating a _virtualenv_ (recommended), install by running:
 
