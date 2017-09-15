@@ -91,12 +91,12 @@ def send_error_email(msg):
 
 def del_file(f):
   os.remove(f)
-  log.info(_f() + 'Deleted ' + f)
+  log.info(_f() + ': Deleted ' + f)
   return True
 
 def move_file(src, dest):
   shutil.copy(src, dest)
-  log.info(_f() + 'Copied ' + src + ' to ' + dest)
+  log.info(_f() + ': Copied ' + src + ' to ' + dest)
   del_file(src)
   return True
 
@@ -119,7 +119,7 @@ def db_stmt(stmt):
       conn.commit()
       return True
   except Exception, e:
-    log.error(_f() + str(e))
+    log.error(_f() + ': ' + str(e))
     #print _f() + str(e)
     return False
 
@@ -136,7 +136,7 @@ def prep_insert_stmt(table_name, data):
            + "')")
   except Exception, ex:
     #print str(ex)
-    log.error(_f() + str(ex))
+    log.error(_f() + ': ' + str(ex))
   return stmt
 
 #------------------------------------------------------------------------------
@@ -232,6 +232,7 @@ def db_trunc_table(table_name):
   stmt = 'truncate table [dm_aou].[dbo].[' + table_name + ']'
   db_stmt(stmt) 
 
+# TODO log/email count of rows inserted and count that failed (if any).
 def load_data_into_db(table_name, data):
   db_trunc_table(table_name)
   def load_single(mp):
