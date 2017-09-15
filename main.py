@@ -96,7 +96,7 @@ def move_file(src, dest):
 
 def db_qy(qy):
   '''Run a SQL query. Returns list of maps.'''
-  log.info('About to run this query: ' + qy)
+  log.info('About to run database query.')
   with pymssql.connect(**db_info) as conn:
     cursor = conn.cursor(as_dict=True)
     cursor.execute(qy)
@@ -104,7 +104,7 @@ def db_qy(qy):
 
 def db_stmt(stmt):
   '''Execute a SQL DDL/DML statement. Returns bool.'''
-  log.info('About to run this statement: ' + stmt)
+  log.info('About to run database statement.')
   try:
     with pymssql.connect(**db_info) as conn:
       cursor = conn.cursor()
