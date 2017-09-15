@@ -5,7 +5,6 @@ import time
 import json
 import csv
 import pymssql
-#from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 import kickshaws as ks # logging, email
@@ -36,7 +35,14 @@ import kickshaws as ks # logging, email
 #
 # Please see README.md for details.
 
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
+# The next 2 statements prevent the following error when inserting into db:
+#   'ascii' codec can't encode character ...
+# Reference: https://stackoverflow.com/a/31137935
+reload(sys)
+sys.setdefaultencoding('utf-8')
+
+#-----------------------------------------------------------------------------
 # init
 
 # Create log object.
@@ -55,6 +61,16 @@ from_email = cfg['from_email']
 to_email = cfg['to_email'] 
 
 #------------------------------------------------------------------------------
+# general utils
+
+# Current function name
+_f = lambda: sys._getframe(1).f_code.co_name
+
+def ts():
+  '''Return current timestamp in milliseconds (as an int).'''
+  return int(round(time.time() * 1000))
+
+#------------------------------------------------------------------------------
 # email
 
 def send_success_email():
@@ -71,23 +87,16 @@ def send_error_email(msg):
     log.error('Error when trying to email: ' + str(ex))
 
 #------------------------------------------------------------------------------
-# general utils
-
-def ts():
-  '''Return current timestamp in milliseconds (as an int).'''
-  return int(round(time.time() * 1000))
-
-#------------------------------------------------------------------------------
 # file utils
 
 def del_file(f):
   os.remove(f)
-  log.info('Deleted ' + f)
+  log.info(_f() + 'Deleted ' + f)
   return True
 
 def move_file(src, dest):
   shutil.copy(src, dest)
-  log.info('Copied ' + src + ' to ' + dest)
+  log.info(_f() + 'Copied ' + src + ' to ' + dest)
   del_file(src)
   return True
 
@@ -96,7 +105,6 @@ def move_file(src, dest):
 
 def db_qy(qy):
   '''Run a SQL query. Returns list of maps.'''
-  log.info('About to run database query.')
   with pymssql.connect(**db_info) as conn:
     cursor = conn.cursor(as_dict=True)
     cursor.execute(qy)
@@ -104,7 +112,6 @@ def db_qy(qy):
 
 def db_stmt(stmt):
   '''Execute a SQL DDL/DML statement. Returns bool.'''
-  log.info('About to run database statement.')
   try:
     with pymssql.connect(**db_info) as conn:
       cursor = conn.cursor()
@@ -112,16 +119,24 @@ def db_stmt(stmt):
       conn.commit()
       return True
   except Exception, e:
-    print str(e) 
+    log.error(_f() + str(e))
+    #print _f() + str(e)
     return False
 
+# TODO use parameterized approach.
 def prep_insert_stmt(table_name, data):
   '''Takes a list of maps. Returns a ready-to-run SQL statement as a str.'''
-  stmt = ("insert into [dm_aou].[dbo].[" + table_name + "] ([" 
-         + "],[".join(data) 
-         + "]) values ('"
-         + "','".join(data.values())
-         + "')")
+  stmt = u''
+  try:
+    stmt = ( u''
+           + "insert into [dm_aou].[dbo].[" + table_name + "] ([" 
+           + "],[".join(data) 
+           + "]) values ('"
+           + "','".join(unicode(x).replace("'", "''") for x in data.values())
+           + "')")
+  except Exception, ex:
+    #print str(ex)
+    log.error(_f() + str(ex))
   return stmt
 
 #------------------------------------------------------------------------------
@@ -233,7 +248,6 @@ def process_file(path):
     log.info('Handled csv successfully; about to load into database.')
     load_data_into_db(db_table, data)
     log.info('Successfully loaded into database.')
-    print 'Processed ' + path + ' successfully!'
     log.info('Processed ' + path + ' successfully!')
     send_success_email()
   except Exception, ex:
@@ -251,6 +265,8 @@ def main():
       raise Exception('One or more startup checks failed')
     class FSEHandler(FileSystemEventHandler):
       def on_created(self, event):
+        log.info('FSEHandler->on_created: a new file has appeared: '
+                 + event.src_path)
         process_file(event.src_path)
     observe_subdirs_flag = False
     observer.schedule(FSEHandler(), inbox_dir, observe_subdirs_flag)
@@ -263,7 +279,7 @@ def main():
       sys.exit(0)
     observer.join()
   except Exception, ex:
-    print str(ex)
+    #print str(ex)
     log.error(str(ex))
     send_error_email(str(ex))
     observer.stop()
