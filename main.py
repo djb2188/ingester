@@ -4,9 +4,12 @@ import shutil
 import time
 import json
 import csv
+# SQL Server connectivity:
 import pymssql
+# Watchdog library: https://pythonhosted.org/watchdog/
 from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
+# Internal libraries we wrote:
 import kickshaws as ks # logging, email
 
 #-----------------------------------------------------------------------------#
@@ -37,7 +40,7 @@ import kickshaws as ks # logging, email
 
 #-----------------------------------------------------------------------------
 # The next 2 statements prevent the following error when inserting into db:
-#   'ascii' codec can't encode character ...
+#   "'ascii' codec can't encode character ..."
 # Reference: https://stackoverflow.com/a/31137935
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -65,7 +68,7 @@ to_email = cfg['to_email']
 #------------------------------------------------------------------------------
 # general utils
 
-# Current function name
+# Get current function name
 _f = lambda: sys._getframe(1).f_code.co_name
 
 def ts():
@@ -112,6 +115,8 @@ def db_qy(qy):
     cursor.execute(qy)
     return cursor.fetchall()
 
+#TODO reflect on using a pool?
+#TODO appropriately handling an error upstack?
 def db_stmt(stmt):
   '''Execute a SQL DDL/DML statement. Returns bool.'''
   try:
@@ -122,7 +127,6 @@ def db_stmt(stmt):
       return True
   except Exception, e:
     log.error(_f() + ': ' + str(e))
-    #print _f() + str(e)
     return False
 
 # TODO use parameterized approach.
@@ -137,7 +141,6 @@ def prep_insert_stmt(table_name, data):
            + "','".join(unicode(x).replace("'", "''") for x in data.values())
            + "')")
   except Exception, ex:
-    #print str(ex)
     log.error(_f() + ': ' + str(ex))
   return stmt
 
@@ -175,9 +178,9 @@ def do_startup_checks():
 
 #TODO
 def is_healthpro_fname_format(fname):
-  '''Confirm CSV has the format we expect:
-    - has expected number of columns
-    - first and last lines are non-CSV free text (which we remove later). '''
+  '''Confirm filename has the format we expect:
+    - have .csv extension
+    - contains institution name we expect'''
   pass
 
 #TODO
@@ -191,7 +194,14 @@ def check_csv_column_names(data, db_info, table_name):
   pass
 
 #TODO
+def check_hp_format():
+  '''A HealthPro CSV has two extraneous lines at the beginning and end.
+  Ensure this is the case with the current file.'''
+  pass
+
+#TODO
 def do_csv_checks(fname):
+  '''Do all sanity checks on the newly deposited file.'''
   pass
 
 def standardize_healthpro_csv(fname):
@@ -200,10 +210,10 @@ def standardize_healthpro_csv(fname):
   tmpfname = 'tmp' + str(ts()) + '.csv'
   lines = []
   with open(fname, 'r') as inn:
-    log.info('Opened ' + fname + ' for reading.')
+    log.info(_f() + ': Opened ' + fname + ' for reading.')
     lines = [line for line in inn]
   with open(tmpfname, 'w') as out:
-    log.info('Opened ' + fname + ' for writing.')
+    log.info(_f() + ': Opened ' + tmpfname + ' for writing.')
     for i in range(len(lines)):
       if i not in [0, 1, len(lines)-1, len(lines)-2]:
         out.write(lines[i])
@@ -213,9 +223,9 @@ def standardize_healthpro_csv(fname):
 def csv_to_data(fname):
   '''Returns a list of maps.'''
   with open(fname, 'r') as f:
-    log.info('Opened ' + fname)
+    log.info(_f() + ': Opened ' + fname)
     reader = csv.DictReader(f)
-    log.info('Successfully read ' + fname + ' into memory.')
+    log.info(_f() + ': Successfully read ' + fname + ' into memory.')
     return [row for row in reader]
 
 def handle_csv(fname):
@@ -257,6 +267,15 @@ def process_file(path):
     send_error_email('process_file: ' + str(ex))
     log.error(str(ex))
 
+#TODO
+def make_fs_event_handler_obj(on_created_func):
+  '''Create and return a new FileSystemEventHandler object (this class
+  is part of the Watchdog library.)
+  on_created_func should take one arg: a string (which will be the event 
+  source path).'''
+  pass
+
+#TODO check polling time interval.
 def main():
   print 'Starting main...'
   log.info('-------------------------------------------------------')
@@ -264,7 +283,6 @@ def main():
   observer = PollingObserver()
   try:
     if not do_startup_checks():
-      print 'One or more startup checks failed'
       raise Exception('One or more startup checks failed')
     class FSEHandler(FileSystemEventHandler):
       def on_created(self, event):
@@ -282,7 +300,6 @@ def main():
       sys.exit(0)
     observer.join()
   except Exception, ex:
-    #print str(ex)
     log.error(str(ex))
     send_error_email(str(ex))
     observer.stop()
