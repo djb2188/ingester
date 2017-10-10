@@ -99,6 +99,7 @@ def del_file(f):
   log.info(_f() + ': Deleted ' + f)
   return True
 
+# TODO more logging
 def move_file(src, dest):
   shutil.copy(src, dest)
   log.info(_f() + ': Copied ' + src + ' to ' + dest)
