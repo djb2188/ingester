@@ -258,6 +258,8 @@ def load_data_into_db(table_name, data):
 
 def process_file(path):
   try:
+    # sleep to ensure process writing to file is finished before we start.
+    time.sleep(10)
     data = handle_csv(path)
     log.info('Handled csv successfully; about to load into database.')
     load_data_into_db(db_table, data)
