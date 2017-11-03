@@ -51,8 +51,6 @@ sys.setdefaultencoding('utf-8')
 # Create log object.
 log = ks.create_logger('hpimporter.log', 'core')
 
-# TODO full table path in config file (not just name)
-# TODO log database and table 
 # Load configuration info from config file.
 config_fname = 'enclave/healthproimporter_config.json'
 cfg = {}
@@ -61,15 +59,20 @@ institution_tag = cfg['institution_tag']
 inbox_dir = cfg['inbox_dir']
 archive_dir = cfg['archive_dir']
 db_info = cfg['db_info']
+db_name = cfg['db_name']
+db_schema = cfg['db_schema']
 db_table = cfg['db_table'] 
 from_email = cfg['from_email'] 
 to_email = cfg['to_email'] 
 
+log.info('--------------------------------------------------------------------')
+log.info('HealthPro CSV Ingester service started.')
+log.info('Details about database from config file: Server: {}, Database: {}, '\
+         'Schema: {}, Table: {}' \
+         ''.format(db_info['host'], db_name, db_schema, db_table))
+
 #------------------------------------------------------------------------------
 # general utils
-
-# Get current function name
-_f = lambda: sys._getframe(1).f_code.co_name
 
 def ts():
   '''Return current timestamp in milliseconds (as an int).'''
@@ -95,14 +98,15 @@ def send_error_email(msg):
 # file utils
 
 def del_file(f):
+  log.info('About to delete ' + f)
   os.remove(f)
-  log.info(_f() + ': Deleted ' + f)
+  log.info('Deleted ' + f)
   return True
 
-# TODO more logging
 def move_file(src, dest):
+  log.info('About to copy {} to {}.'.format(src, dest))
   shutil.copy(src, dest)
-  log.info(_f() + ': Copied ' + src + ' to ' + dest)
+  log.info('Copied {} to {}.'.format(src, dest))
   del_file(src)
   return True
 
@@ -116,33 +120,30 @@ def db_qy(qy):
     cursor.execute(qy)
     return cursor.fetchall()
 
-#TODO reflect on using a pool?
-#TODO appropriately handling an error upstack?
 def db_stmt(stmt):
-  '''Execute a SQL DDL/DML statement. Returns bool.'''
+  '''Execute a SQL DDL/DML statement. Returns bool. Throws.'''
   try:
     with pymssql.connect(**db_info) as conn:
       cursor = conn.cursor()
       cursor.execute(stmt)
       conn.commit()
-      return True
   except Exception, e:
-    log.error(_f() + ': ' + str(e))
-    return False
+    log.error(str(e))
+    raise e
 
-# TODO use parameterized approach.
 def prep_insert_stmt(table_name, data):
   '''Takes a list of maps. Returns a ready-to-run SQL statement as a str.'''
   stmt = u''
   try:
     stmt = ( u''
-           + "insert into [dm_aou].[dbo].[" + table_name + "] ([" 
+           + "insert into [" + db_name + "].[" + db_schema + "].[" 
+           + table_name + "] ([" 
            + "],[".join(data) 
            + "]) values ('"
            + "','".join(unicode(x).replace("'", "''") for x in data.values())
            + "')")
   except Exception, ex:
-    log.error(_f() + ': ' + str(ex))
+    log.error(str(ex))
   return stmt
 
 #------------------------------------------------------------------------------
@@ -177,30 +178,25 @@ def do_startup_checks():
 #------------------------------------------------------------------------------
 # csv handling
 
-#TODO
 def is_healthpro_fname_format(fname):
   '''Confirm filename has the format we expect:
     - have .csv extension
     - contains institution name we expect'''
   pass
 
-#TODO
 def check_csv_rowcount():
   '''Rows in CSV must be >= rows in db.'''
   pass
 
-#TODO
 def check_csv_column_names(data, db_info, table_name):
   '''Column names must match what's in db.'''
   pass
 
-#TODO
 def check_hp_format():
   '''A HealthPro CSV has two extraneous lines at the beginning and end.
   Ensure this is the case with the current file.'''
   pass
 
-#TODO
 def do_csv_checks(fname):
   '''Do all sanity checks on the newly deposited file.'''
   pass
@@ -211,10 +207,10 @@ def standardize_healthpro_csv(fname):
   tmpfname = 'tmp' + str(ts()) + '.csv'
   lines = []
   with open(fname, 'r') as inn:
-    log.info(_f() + ': Opened ' + fname + ' for reading.')
+    log.info('Opened ' + fname + ' for reading.')
     lines = [line for line in inn]
   with open(tmpfname, 'w') as out:
-    log.info(_f() + ': Opened ' + tmpfname + ' for writing.')
+    log.info('Opened ' + tmpfname + ' for writing.')
     for i in range(len(lines)):
       if i not in [0, 1, len(lines)-1, len(lines)-2]:
         out.write(lines[i])
@@ -224,9 +220,9 @@ def standardize_healthpro_csv(fname):
 def csv_to_data(fname):
   '''Returns a list of maps.'''
   with open(fname, 'r') as f:
-    log.info(_f() + ': Opened ' + fname)
+    log.info('Opened ' + fname)
     reader = csv.DictReader(f)
-    log.info(_f() + ': Successfully read ' + fname + ' into memory.')
+    log.info('Successfully read ' + fname + ' into memory.')
     return [row for row in reader]
 
 def handle_csv(fname):
@@ -242,10 +238,9 @@ def handle_csv(fname):
 # load data into db
 
 def db_trunc_table(table_name):
-  stmt = 'truncate table [dm_aou].[dbo].[' + table_name + ']'
+  stmt = 'truncate table [' + db_name + '].[' + db_schema + '].[' + table_name + ']'
   db_stmt(stmt) 
 
-# TODO log/email count of rows inserted and count that failed (if any).
 def load_data_into_db(table_name, data):
   db_trunc_table(table_name)
   def load_single(mp):
@@ -270,7 +265,6 @@ def process_file(path):
     send_error_email('process_file: ' + str(ex))
     log.error(str(ex))
 
-#TODO
 def make_fs_event_handler_obj(on_created_func):
   '''Create and return a new FileSystemEventHandler object (this class
   is part of the Watchdog library.)
@@ -278,12 +272,10 @@ def make_fs_event_handler_obj(on_created_func):
   source path).'''
   pass
 
-#TODO check polling time interval.
 def main():
   print 'Starting main...'
-  log.info('-------------------------------------------------------')
-  log.info('              healthproimporter starting...            ')
-  observer = PollingObserver()
+  log.info('In main()')
+  observer = PollingObserver(timeout=5) # check every 5 seconds
   try:
     if not do_startup_checks():
       raise Exception('One or more startup checks failed')
@@ -295,6 +287,7 @@ def main():
     observe_subdirs_flag = False
     observer.schedule(FSEHandler(), inbox_dir, observe_subdirs_flag)
     observer.start()
+    log.info('Waiting for activity...')
     print 'observer started.' 
     try:
       while True: time.sleep(1)

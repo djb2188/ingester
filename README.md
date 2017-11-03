@@ -24,14 +24,16 @@ Create a folder named ````enclave```` which will be a subdir of your working dir
 
 	{ "inbox_dir" : "/path/to/inbox"
 	, "archive_dir" : "/path/to/archive"
-	, "institution_tag" : "MYINSTITUTION"
+	, "consortium_tag" : "CONSORTIUM"
 	, "db_info" : { "host" : "X"
 	              , "user" : "X" 
 	              , "password" : "X" }
-    , "db_table" : "healthpro_dev"
-    , "from_email" : "X"
-    , "to_email" : "X"
-    }
+  , "db_name"  : "dm_aou"
+  , "db_schema" : "dbo"
+  , "db_table" : "healthpro_dev"
+  , "from_email" : "X"
+  , "to_email" : "X"
+  }
 
 * The email addresses are for error and success notification emails.
 * You can customize the table name; it should match a table that's been created (see below).
