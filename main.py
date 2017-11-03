@@ -49,13 +49,13 @@ sys.setdefaultencoding('utf-8')
 # init
 
 # Create log object.
-log = ks.create_logger('hpimporter.log', 'core')
+log = ks.create_logger('hpimporter.log', 'main')
 
 # Load configuration info from config file.
 config_fname = 'enclave/healthproimporter_config.json'
 cfg = {}
 with open(config_fname, 'r') as f: cfg = json.load(f)
-institution_tag = cfg['institution_tag']
+consortium_tag = cfg['consortium_tag']
 inbox_dir = cfg['inbox_dir']
 archive_dir = cfg['archive_dir']
 db_info = cfg['db_info']
@@ -64,12 +64,6 @@ db_schema = cfg['db_schema']
 db_table = cfg['db_table'] 
 from_email = cfg['from_email'] 
 to_email = cfg['to_email'] 
-
-log.info('--------------------------------------------------------------------')
-log.info('HealthPro CSV Ingester service started.')
-log.info('Details about database from config file: Server: {}, Database: {}, '\
-         'Schema: {}, Table: {}' \
-         ''.format(db_info['host'], db_name, db_schema, db_table))
 
 #------------------------------------------------------------------------------
 # general utils
@@ -144,6 +138,7 @@ def prep_insert_stmt(table_name, data):
            + "')")
   except Exception, ex:
     log.error(str(ex))
+    raise ex
   return stmt
 
 #------------------------------------------------------------------------------
@@ -176,13 +171,26 @@ def do_startup_checks():
   return True
 
 #------------------------------------------------------------------------------
-# csv handling
+# file checks 
 
-def is_healthpro_fname_format(fname):
+def is_sys_file(fpath):
+  '''Is this an OS-generated file, such as .DS_Store, etc?'''
+  # Default to lowercasing things.
+  sysfiles = ['.ds_store', 'desktop.ini', 'thumbs.db']
+  x = os.path.basename(fpath).lower()
+  return x in sysfiles 
+
+def is_csv(fpath):
+  return fpath.endswith('.csv')
+
+def file_has_healthpro_naming_format(fpath):
   '''Confirm filename has the format we expect:
-    - have .csv extension
-    - contains institution name we expect'''
-  pass
+    - has .csv extension
+    - contains consortium name we expect (from config).'''
+  fname = os.path.basename(fpath)
+  x = fname.startswith('workqueue_' + consortium_tag)
+  y = is_csv(fpath)
+  return (x and y)
 
 def check_csv_rowcount():
   '''Rows in CSV must be >= rows in db.'''
@@ -200,6 +208,9 @@ def check_hp_format():
 def do_csv_checks(fname):
   '''Do all sanity checks on the newly deposited file.'''
   pass
+
+#------------------------------------------------------------------------------
+# csv handling
 
 def standardize_healthpro_csv(fname):
   '''HealthPro CSV contains two extraneous lines at the start and end.
@@ -274,7 +285,11 @@ def make_fs_event_handler_obj(on_created_func):
 
 def main():
   print 'Starting main...'
-  log.info('In main()')
+  log.info('--------------------------------------------------------------------')
+  log.info('HealthPro CSV Ingester service started.')
+  log.info('Details about database from config file: Server: {}, Database: {}, '\
+           'Schema: {}, Table: {}' \
+           ''.format(db_info['host'], db_name, db_schema, db_table))
   observer = PollingObserver(timeout=5) # check every 5 seconds
   try:
     if not do_startup_checks():
@@ -288,7 +303,7 @@ def main():
     observer.schedule(FSEHandler(), inbox_dir, observe_subdirs_flag)
     observer.start()
     log.info('Waiting for activity...')
-    print 'observer started.' 
+    print 'Service started.' 
     try:
       while True: time.sleep(1)
     except KeyboardInterrupt:
