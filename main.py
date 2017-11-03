@@ -4,6 +4,7 @@ import shutil
 import time
 import json
 import csv
+import codecs
 # SQL Server connectivity:
 import pymssql
 # Watchdog library: https://pythonhosted.org/watchdog/
@@ -48,6 +49,9 @@ sys.setdefaultencoding('utf-8')
 #-----------------------------------------------------------------------------
 # init
 
+# colummn titles + 4 non-csv rows that HealthPro always includes
+HP_CSV_EXTRANEOUS_ROWCOUNT = 5
+
 # Create log object.
 log = ks.create_logger('hpimporter.log', 'main')
 
@@ -71,6 +75,11 @@ to_email = cfg['to_email']
 def ts():
   '''Return current timestamp in milliseconds (as an int).'''
   return int(round(time.time() * 1000))
+
+def complete_tbl_name():
+  '''Returns string; eg. [dm_aou].[dbo].[healthpro]
+  This is based on what's in config'''
+  return '[' + db_name + '].[' + db_schema + '].[' + db_table + ']'
 
 #------------------------------------------------------------------------------
 # email
@@ -192,17 +201,27 @@ def file_has_healthpro_naming_format(fpath):
   y = is_csv(fpath)
   return (x and y)
 
-def check_csv_rowcount():
-  '''Rows in CSV must be >= rows in db.'''
-  pass
-
-def check_csv_column_names(data, db_info, table_name):
-  '''Column names must match what's in db.'''
-  pass
-
 def check_hp_format():
   '''A HealthPro CSV has two extraneous lines at the beginning and end.
   Ensure this is the case with the current file.'''
+  pass
+
+def db_curr_rowcount():
+  '''Returns int.'''
+  qy = 'select count(*) as count from ' + complete_tbl_name()
+  rslt = db_qy(qy)
+  return rslt[0]['count']
+
+def check_csv_rowcount(fpath):
+  '''Rows in CSV must be >= rows in db.'''
+  db_rowcount =  db_curr_rowcount()
+  csv_rowcount = -1
+  with codecs.open(fpath, 'r', encoding='utf_8') as f:
+    csv_rowcount = sum(1 for row in f) - HP_CSV_EXTRANEOUS_ROWCOUNT
+  return csv_rowcount >= db_rowcount
+
+def check_csv_column_names(data, db_info, table_name):
+  '''Column names must match what's in db.'''
   pass
 
 def do_csv_checks(fname):
