@@ -5,7 +5,7 @@ Service to take a CSV exported from HealthPro (software which is used by NIH _Al
 Written by Sean Pompea (http://seanpompea.sdf.org).
 
 ## Process
-Written in Python 2.7, this software runs a server process. It watches for a CSV to be deposited in the specified *inbox* folder. It replaces the destination database table with the contents of the CSV, then stores that CSV in the *archive* folder.
+Written in Python 2.7, this software runs as a server process. It watches for a CSV to be deposited in the specified *inbox* folder. It replaces the destination database table with the contents of the CSV, then stores that CSV in the *archive* folder.
 
 
 ## Configuration / First-Time Setup
@@ -22,18 +22,18 @@ After creating a _virtualenv_ (recommended), install by running:
 
 Create a folder named ````enclave```` which will be a subdir of your working directory. Put ````healthproimporter_config.json```` in it. Customize the contents:
 
-  { "inbox_dir" : "/path/to/inbox"
-  , "archive_dir" : "/path/to/archive"
-  , "consortium_tag" : "CONSORTIUM"
-  , "db_info" : { "host" : "X"
-              , "user" : "X" 
-              , "password" : "X" }
-  , "db_name"  : "dm_aou"
-  , "db_schema" : "dbo"
-  , "db_table" : "healthpro_dev"
-  , "from_email" : "X"
-  , "to_email" : "X"
-  }
+    { "inbox_dir" : "/path/to/inbox"
+    , "archive_dir" : "/path/to/archive"
+    , "consortium_tag" : "CONSORTIUM"
+    , "db_info" : { "host" : "X"
+                  , "user" : "X" 
+                  , "password" : "X" }
+    , "db_name"  : "dm_aou"
+    , "db_schema" : "dbo"
+    , "db_table" : "healthpro_dev"
+    , "from_email" : "X"
+    , "to_email" : "X"
+    }
 
 * The email addresses are for error and success notification emails.
 * You can customize the table name; it should match a table that's been created (see below).
