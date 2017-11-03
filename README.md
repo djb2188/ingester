@@ -22,12 +22,12 @@ After creating a _virtualenv_ (recommended), install by running:
 
 Create a folder named ````enclave```` which will be a subdir of your working directory. Put ````healthproimporter_config.json```` in it. Customize the contents:
 
-	{ "inbox_dir" : "/path/to/inbox"
-	, "archive_dir" : "/path/to/archive"
-	, "consortium_tag" : "CONSORTIUM"
-	, "db_info" : { "host" : "X"
-	              , "user" : "X" 
-	              , "password" : "X" }
+  { "inbox_dir" : "/path/to/inbox"
+  , "archive_dir" : "/path/to/archive"
+  , "consortium_tag" : "CONSORTIUM"
+  , "db_info" : { "host" : "X"
+              , "user" : "X" 
+              , "password" : "X" }
   , "db_name"  : "dm_aou"
   , "db_schema" : "dbo"
   , "db_table" : "healthpro_dev"
@@ -67,5 +67,6 @@ https://github.com/seanpompea/healthproimporter
   * https://pythonhosted.org/watchdog/api.html#watchdog.observers.polling.PollingObserver
 
 * Unicode in Python 2
-  * Overcoming frustration: Correctly using unicode in python2 -- https://pythonhosted.org/kitchen/unicode-frustrations.html
+  * https://pythonhosted.org/kitchen/unicode-frustrations.html
+  * http://farmdev.com/talks/unicode/
 
