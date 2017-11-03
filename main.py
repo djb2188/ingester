@@ -201,10 +201,30 @@ def file_has_healthpro_naming_format(fpath):
   y = is_csv(fpath)
   return (x and y)
 
-def check_hp_format():
-  '''A HealthPro CSV has two extraneous lines at the beginning and end.
-  Ensure this is the case with the current file.'''
-  pass
+def check_hp_csv_format(fpath):
+  '''A HealthPro CSV has some extraneous lines at the beginning and end.
+  Ensure this is the case with the current file.
+  SPECIAL NOTE ON ENCODING: the HealthPro CSV is encoding as UTF-8 and also
+  starts with a BOM (byte order marker). (Btw, the easiest way to confirm this
+  is by opening the csv in vim.) The precise encoding in Python for
+  this is not utf_8 but rather utf_8_sig. 
+  For example, if you used utf-8, then the first row would have 120 chars
+  (which includes the BOM), whereas the variable first_row has only 119 chars.
+  See: https://docs.python.org/2/library/codecs.html
+  '''
+  first_row = u'"This file contains information that is sensitive '\
+              'and confidential. Do not distribute either the file or '\
+              'its contents."'
+  second_row = u'""'
+  penultimate_row = u'""'
+  last_row = u'"Confidential Information"'
+  with codecs.open(fpath, 'r', encoding='utf_8_sig') as f:
+    rows = [line.strip() for line in f]
+    a = rows[0] == first_row
+    b = rows[1] == second_row
+    c = rows[-2] == penultimate_row
+    d = rows[-1] == last_row
+  return (a and b and c and d)
 
 def db_curr_rowcount():
   '''Returns int.'''
@@ -217,6 +237,7 @@ def check_csv_rowcount(fpath):
   db_rowcount =  db_curr_rowcount()
   csv_rowcount = -1
   with codecs.open(fpath, 'r', encoding='utf_8') as f:
+    # Note: rows in f will be of type unicode.
     csv_rowcount = sum(1 for row in f) - HP_CSV_EXTRANEOUS_ROWCOUNT
   return csv_rowcount >= db_rowcount
 
