@@ -47,6 +47,11 @@ Create the archive and inbox folders as specified in the config json file (see a
 Create the database table in SQL Server using the DDL located in thed ````sql```` folder. Customize the database, schema, and table names to suit.
 
 ## Notes
+### Column Names ###
+
+`column-names.csv` is current as of HealthPro 0.8.6.
+
+### Technical Details ###
 
 Use Watchdog's PollingObserver (rather than the vanilla Observer) to observe files being delivered on a Samba share, NFS or similar.
 

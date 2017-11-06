@@ -1,4 +1,4 @@
-import os
+import os # https://docs.python.org/2/library/os.path.html
 import sys 
 import shutil
 import time
@@ -90,6 +90,12 @@ def send_success_email():
                  , 'Success!')
   except Exception, ex:
     log.error('Error when trying to email: ' + str(ex))
+
+def send_notice_email(msg):
+  try:
+    ks.send_email(from_email, to_email, 'NOTIFICATION - HealthPro WQ Ingest', msg)
+  except Exception, ex:
+    log.error('Error when trying to email: ' + str(ex))
  
 def send_error_email(msg):
   try:
@@ -124,7 +130,7 @@ def db_qy(qy):
     return cursor.fetchall()
 
 def db_stmt(stmt):
-  '''Execute a SQL DDL/DML statement. Returns bool. Throws.'''
+  '''Execute a SQL DDL/DML statement. Use db_qy instead for queries. Throws.'''
   try:
     with pymssql.connect(**db_info) as conn:
       cursor = conn.cursor()
@@ -192,7 +198,7 @@ def is_sys_file(fpath):
 def is_csv(fpath):
   return fpath.endswith('.csv')
 
-def file_has_healthpro_naming_format(fpath):
+def check_filename_format(fpath):
   '''Confirm filename has the format we expect:
     - has .csv extension
     - contains consortium name we expect (from config).'''
@@ -241,13 +247,18 @@ def check_csv_rowcount(fpath):
     csv_rowcount = sum(1 for row in f) - HP_CSV_EXTRANEOUS_ROWCOUNT
   return csv_rowcount >= db_rowcount
 
-def check_csv_column_names(data, db_info, table_name):
-  '''Column names must match what's in db.'''
-  pass
+def get_target_column_names():
+  out = []
+  with codecs.open('column-names.csv', 'r', encoding='utf_8') as f:
+    out = f.read().strip().split(',')
+  return out
 
-def do_csv_checks(fname):
-  '''Do all sanity checks on the newly deposited file.'''
-  pass
+def check_csv_column_names(data):
+  '''Column names must match what's in column-names.csv. Recall that
+  data is a seq of maps.'''
+  target_cols = get_target_column_names()
+  csv_cols = data[0].keys() # Any row from data will do.
+  return set(csv_cols) == set(target_cols)
 
 #------------------------------------------------------------------------------
 # csv handling
@@ -306,8 +317,40 @@ def process_file(path):
   try:
     # sleep to ensure process writing to file is finished before we start.
     time.sleep(10)
+    # Should we ignore?
+    if is_sys_file(path):
+      return    
+    # Do some sanity checks on the file.
+    fname = os.path.basename(path) 
+    if not check_filename_format(path):
+      msg = 'The deposited file ({}) has an unexpected filename; '\
+            'so, it was not processed. Please check.'.format(fname)  
+      log.info(msg)
+      send_notice_email(msg)
+      return
+    if not check_hp_csv_format(path):
+      msg = 'The format of the deposited CSV ({}) doesn\'t match what\'s '\
+            'expected; so, it was not processed. Please check.'.format(fname)  
+      log.info(msg)
+      send_notice_email(msg)
+      return
+    if not check_csv_rowcount(path):
+      msg = 'The number of rows of data in the deposited CSV ({}) is fewer '\
+            'than in the database; so, it was not processed. '\
+            'Please check.'.format(fname)  
+      log.info(msg)
+      send_notice_email(msg)
+      return
+    # So far so good. Proceed to read in csv.
     data = handle_csv(path)
-    log.info('Handled csv successfully; about to load into database.')
+    log.info('Handled csv successfully')
+    if not check_csv_column_names(data):
+      msg = 'The columns in the deposited CSV ({}) don\'t match expectations; '\
+            'so, it was archived but not processed. Please check.'.format(fname)  
+      log.info(msg)
+      send_notice_email(msg)
+      return
+    log.info('About to load into database.')
     load_data_into_db(db_table, data)
     log.info('Successfully loaded into database.')
     log.info('Processed ' + path + ' successfully!')
@@ -316,11 +359,13 @@ def process_file(path):
     send_error_email('process_file: ' + str(ex))
     log.error(str(ex))
 
-def make_fs_event_handler_obj(on_created_func):
+def make_fse_handler_obj(on_created_func):
   '''Create and return a new FileSystemEventHandler object (this class
-  is part of the Watchdog library.)
-  on_created_func should take one arg: a string (which will be the event 
-  source path).'''
+  is part of the Watchdog library.) where its on_created function 
+  is defined as you see fit. 
+  Argument:
+    - on_created_func should be a function that takes one arg: a string
+      (which will be the event source path).'''
   pass
 
 def main():
