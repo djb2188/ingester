@@ -353,11 +353,19 @@ def process_file(path):
     log.info('About to load into database.')
     load_data_into_db(db_table, data)
     log.info('Successfully loaded into database.')
-    log.info('Processed ' + path + ' successfully!')
-    send_success_email()
+    csv_rowcount = len(data)
+    db_rowcount = db_curr_rowcount()
+    log.info('Stats: csv rowcount: [' + str(csv_rowcount) + ']; '\
+             'db rowcount: [' + str(db_rowcount) + '].')
+    if csv_rowcount == db_rowcount:
+      log.info('Processed ' + path + ' successfully!')
+      send_success_email()
+    else:
+      log.error('Rowcounts do not match.')
+      send_error_email('Final rowcounts do not match; please check.')
   except Exception, ex:
-    send_error_email('process_file: ' + str(ex))
     log.error(str(ex))
+    send_error_email('An error occurred while processing {}. Please check.'.format(fname))
 
 def make_fse_handler_obj(on_created_func):
   '''Create and return a new FileSystemEventHandler object (this class
@@ -397,7 +405,7 @@ def main():
     observer.join()
   except Exception, ex:
     log.error(str(ex))
-    send_error_email(str(ex))
+    send_error_email('An error occurred in main(). Please check.')
     observer.stop()
     sys.exit(1)
 
