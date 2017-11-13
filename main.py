@@ -5,6 +5,7 @@ import time
 import json
 import csv
 import codecs
+import chardet
 # SQL Server connectivity:
 import pymssql
 # Watchdog library: https://pythonhosted.org/watchdog/
@@ -35,7 +36,7 @@ import kickshaws as ks # logging, email
 #   o Moves file to the archive folder (location also configurable)
 #   o Truncates the  database table (database and table name are configurable)
 #   o Inserts the new data into the table 
-#   o If issue arises, email is sent to engineer
+#   o If issue arises, email is sent.
 #
 # Please see README.md for details.
 
@@ -50,7 +51,7 @@ sys.setdefaultencoding('utf-8')
 # init
 
 # colummn titles + 4 non-csv rows that HealthPro always includes
-HP_CSV_EXTRANEOUS_ROWCOUNT = 5
+HP_CSV_NONDATA_ROWCOUNT = 5
 
 # Create log object.
 log = ks.create_logger('hpimporter.log', 'main')
@@ -207,6 +208,19 @@ def check_filename_format(fpath):
   y = is_csv(fpath)
   return (x and y)
 
+def check_char_encoding_is_utf8sig(fpath):
+  '''Confirm that the character encoding of the file is utf-8 with
+  a BOM (byte-order marker) -- in Python this is normally tagged as
+  'utf_8_sig' or 'UTF-8-SIG', etc.'''
+  f = open(fpath, 'rb') # read as raw bytes
+  raw = f.read()
+  rslt = chardet.detect(raw)
+  enc = rslt['encoding']
+  conf = str(rslt['confidence'])
+  log.info('Detected character encoding for [{}] is [{}]; confidence: '\
+           '[{}]'.format(fpath, enc, conf))
+  return enc == 'UTF-8-SIG'
+
 def check_hp_csv_format(fpath):
   '''A HealthPro CSV has some extraneous lines at the beginning and end.
   Ensure this is the case with the current file.
@@ -242,9 +256,9 @@ def check_csv_rowcount(fpath):
   '''Rows in CSV must be >= rows in db.'''
   db_rowcount =  db_curr_rowcount()
   csv_rowcount = -1
-  with codecs.open(fpath, 'r', encoding='utf_8') as f:
+  with codecs.open(fpath, 'r', encoding='utf_8_sig') as f:
     # Note: rows in f will be of type unicode.
-    csv_rowcount = sum(1 for row in f) - HP_CSV_EXTRANEOUS_ROWCOUNT
+    csv_rowcount = sum(1 for row in f) - HP_CSV_NONDATA_ROWCOUNT
   return csv_rowcount >= db_rowcount
 
 def get_target_column_names():
@@ -325,6 +339,16 @@ def process_file(path):
     if not check_filename_format(path):
       msg = 'The deposited file ({}) has an unexpected filename; '\
             'so, it was not processed. Please check.'.format(fname)  
+      log.info(msg)
+      send_notice_email(msg)
+      return
+    if not check_char_encoding_is_utf8sig(path):
+      msg = 'The character encoding of the deposited CSV ({}) '\
+            'doesn\'t match what\'s '\
+            'expected; so, it was not processed. One way this could happen '\
+            'is if the file were opened in Excel or another application and then '\
+            'saved from within that application (even when saved as a CSV).'\
+            ''.format(fname)  
       log.info(msg)
       send_notice_email(msg)
       return
