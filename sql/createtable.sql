@@ -42,6 +42,7 @@ CREATE TABLE [dm_aou].[dbo].[healthpro] (
 	[Access PPI Survey Completion Date] DATE NULL, 
 	[Physical Measurements Status] NVARCHAR(2) NULL, 
 	[Physical Measurements Completion Date] DATE NULL, 
+  [Physical Measurements Location] NVARCHAR(50) NULL,
 	[Samples for DNA Received] NVARCHAR(2) NULL, 
 	[Biospecimens] NVARCHAR(10) NULL, 
 	[8 mL SST Collected] NVARCHAR(2) NULL, 
@@ -59,5 +60,7 @@ CREATE TABLE [dm_aou].[dbo].[healthpro] (
 	[Urine 10 mL Collected] NVARCHAR(2) NULL, 
 	[Urine 10 mL Collection Date] DATE NULL, 
 	[Saliva Collected] NVARCHAR(2) NULL, 
-	[Saliva Collection Date] DATE NULL
+	[Saliva Collection Date] DATE NULL,
+  [Biospecimens Location] NVARCHAR(50) NULL
 )
+
