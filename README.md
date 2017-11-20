@@ -49,7 +49,7 @@ Create the database table in SQL Server using the DDL located in thed ````sql```
 ## Notes
 ### Column Names ###
 
-`column-names.csv` is current as of HealthPro 0.8.6.
+`column-names.csv` is current as of HealthPro 0.8.7 (released the weekend of Nov 18th).
 
 ### Technical Details ###
 
