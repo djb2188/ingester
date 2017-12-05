@@ -70,6 +70,11 @@ db_table = cfg['db_table']
 from_email = cfg['from_email'] 
 to_email = cfg['to_email'] 
 
+# Flag to indicate monitored folder is gone. 
+# For now, restart the service to clear this flag.
+# We can make fancier later.
+inbox_gone_flag = False
+
 #------------------------------------------------------------------------------
 # general utils
 
@@ -412,7 +417,26 @@ def main():
     if not do_startup_checks():
       raise Exception('One or more startup checks failed')
     class FSEHandler(FileSystemEventHandler):
+      #def on_any_event(self, event):
+      #  log.info('FSEHandler->on_any_event: event_type=[' \
+      #           '{}], src_path=[{}]'.format(event.event_type, event.src_path))
+      def on_deleted(self, event):
+        # Our forked watchdog emits this event when inbox folder unmounts.
+        # We log and send an email only once.
+        # Might remount without us needing to do anything.
+        global inbox_gone_flag
+        if event.src_path == inbox_dir:
+          if not inbox_gone_flag:
+            inbox_gone_flag = True
+            msg = event.src_path + ' is gone!'
+            log.error(msg)
+            send_notice_email(msg) 
       def on_created(self, event):
+        # Rather then explicitly chk for inbox remount, not clear flag
+        # here.
+        global inbox_gone_flag
+        if inbox_gone_flag:
+          inbox_gone_flag = False
         log.info('FSEHandler->on_created: a new file has appeared: '
                  + event.src_path)
         process_file(event.src_path)
