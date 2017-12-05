@@ -1,5 +1,5 @@
-git+https://github.com/seanpompea/kickshaws/#egg=kickshaws
-watchdog==0.8.3
+git+https://github.com/seanpompea/kickshaws/
+git+https://github.com/wcmc-research-informatics/watchdog
 pymssql==2.1.3
 chardet==3.0.4
 

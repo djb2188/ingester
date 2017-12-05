@@ -330,7 +330,7 @@ def load_data_into_db(table_name, data):
 def process_file(path):
   try:
     # sleep to ensure process writing to file is finished before we start.
-    time.sleep(10)
+    time.sleep(30)
     # Should we ignore?
     if is_sys_file(path):
       return    
@@ -422,12 +422,19 @@ def main():
     log.info('Waiting for activity...')
     print 'Service started.' 
     try:
-      while True: time.sleep(1)
+      while True:
+        observer.join(10)
+        if observer.is_alive():
+          continue
+        else:
+          raise Exception('Observer thread has stopped.')
     except KeyboardInterrupt:
+      print '\nKeyboard interrupt caught. Quitting.'
       observer.stop()
       sys.exit(0)
-    observer.join()
+    observer.join() 
   except Exception, ex:
+    print '\nError caught. Quitting. Check log.'
     log.error(str(ex))
     send_error_email('An error occurred in main(). Please check.')
     observer.stop()
