@@ -6,12 +6,9 @@ import json
 import csv
 import codecs
 import chardet
-# SQL Server connectivity:
 import pymssql
-# Watchdog library: https://pythonhosted.org/watchdog/
 from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
-# Internal libraries we wrote:
 import kickshaws as ks # logging, email
 
 #-----------------------------------------------------------------------------#
@@ -82,7 +79,7 @@ def ts():
   '''Return current timestamp in milliseconds (as an int).'''
   return int(round(time.time() * 1000))
 
-def complete_tbl_name():
+def fully_qualified_table_name():
   '''Returns string; eg. [dm_aou].[dbo].[healthpro]
   This is based on what's in config'''
   return '[' + db_name + '].[' + db_schema + '].[' + db_table + ']'
@@ -146,21 +143,45 @@ def db_stmt(stmt):
     log.error(str(e))
     raise e
 
-def prep_insert_stmt(table_name, data):
-  '''Takes a list of maps. Returns a ready-to-run SQL statement as a str.'''
+def db_executemany(stmt, tuples):
+  '''Execute a parameterized statement for a collection of rows.
+  tuples should be a sequence of tuples (not maps).
+  Use db_qy instead for queries. Throws.'''
+  try:
+    with pymssql.connect(**db_info) as conn:
+      cursor = conn.cursor()
+      cursor.executemany(stmt, tuples)
+      conn.commit()
+  except Exception, e:
+    log.error(str(e))
+    raise e
+
+def parameterized_insert_stmt(data):
+  '''data should be a sequence of maps.
+  See: http://pymssql.org/en/stable/pymssql_examples.html'''
   stmt = u''
   try:
     stmt = ( u''
-           + "insert into [" + db_name + "].[" + db_schema + "].[" 
-           + table_name + "] ([" 
-           + "],[".join(data) 
-           + "]) values ('"
-           + "','".join(unicode(x).replace("'", "''") for x in data.values())
-           + "')")
+           + 'insert into ' + fully_qualified_table_name()
+           + ' ([' 
+           + '],['.join(data[0]) # All rows should have same keys.
+           + ']) values ('
+           + ','.join('%s' for _ in data[0])
+           + ')')
   except Exception, ex:
     log.error(str(ex))
     raise ex
   return stmt
+
+def db_insert_many(data):
+  '''Takes a seq of maps. Doesn't return anything. Throws.'''
+  try:
+    stmt = parameterized_insert_stmt(data) 
+    tuples = map(lambda mp: tuple([mp[k] for k in mp]), data)
+    db_executemany(stmt, tuples)
+  except Exception, ex:
+    log.error(str(ex))
+    raise ex
 
 #------------------------------------------------------------------------------
 # startup checks
@@ -253,7 +274,7 @@ def check_hp_csv_format(fpath):
 
 def db_curr_rowcount():
   '''Returns int.'''
-  qy = 'select count(*) as count from ' + complete_tbl_name()
+  qy = 'select count(*) as count from ' + fully_qualified_table_name()
   rslt = db_qy(qy)
   return rslt[0]['count']
 
@@ -319,15 +340,12 @@ def handle_csv(fname):
 # load data into db
 
 def db_trunc_table(table_name):
-  stmt = 'truncate table [' + db_name + '].[' + db_schema + '].[' + table_name + ']'
+  stmt = 'truncate table ' + fully_qualified_table_name()
   db_stmt(stmt) 
 
 def load_data_into_db(table_name, data):
   db_trunc_table(table_name)
-  def load_single(mp):
-    stmt = prep_insert_stmt(table_name, mp)
-    db_stmt(stmt)
-  map(load_single, data)
+  db_insert_many(data) 
 
 #------------------------------------------------------------------------------
 # driver
@@ -335,8 +353,10 @@ def load_data_into_db(table_name, data):
 def process_file(path):
   try:
     # sleep to ensure process writing to file is finished before we start.
+    # E.g., if downloading directly into inbox folder using a browser, the
+    # file will not be all there initially.
     time.sleep(30)
-    # Should we ignore?
+    # Should we ignore this file?
     if is_sys_file(path):
       return    
     # Do some sanity checks on the file.
@@ -396,13 +416,10 @@ def process_file(path):
     log.error(str(ex))
     send_error_email('An error occurred while processing {}. Please check.'.format(fname))
 
-def make_fse_handler_obj(on_created_func):
+def make_handler_obj(on_created_func):
   '''Create and return a new FileSystemEventHandler object (this class
-  is part of the Watchdog library.) where its on_created function 
-  is defined as you see fit. 
-  Argument:
-    - on_created_func should be a function that takes one arg: a string
-      (which will be the event source path).'''
+  is part of the Watchdog library.) which has custom handler functions
+  specific to our needs.'''
   pass
 
 def main():
@@ -417,13 +434,18 @@ def main():
     if not do_startup_checks():
       raise Exception('One or more startup checks failed')
     class FSEHandler(FileSystemEventHandler):
+      # Here we define what we'd like to do when certain filesystem
+      # events take place -- e.g., when a new CSV appears in the watched
+      # directory.
+      # Uncomment on_any_event for extra logging.
       #def on_any_event(self, event):
       #  log.info('FSEHandler->on_any_event: event_type=[' \
       #           '{}], src_path=[{}]'.format(event.event_type, event.src_path))
       def on_deleted(self, event):
-        # Our forked watchdog emits this event when inbox folder unmounts.
-        # We log and send an email only once.
-        # Might remount without us needing to do anything.
+        # Our forked Watchdog (v0.8.3.1) emits this event when inbox folder 
+        # unmounts (or otherwise is not available).
+        # We log and send an email only once. It very well might remount without 
+        # us needing to do anything.
         global inbox_gone_flag
         if event.src_path == inbox_dir:
           if not inbox_gone_flag:
@@ -432,8 +454,8 @@ def main():
             log.error(msg)
             send_notice_email(msg) 
       def on_created(self, event):
-        # Rather then explicitly chk for inbox remount, not clear flag
-        # here.
+        # In on_deleted above, we set the inbox_gone_flag. But if a file appears
+        # we know the inbox is back and all is well; so unset it. 
         global inbox_gone_flag
         if inbox_gone_flag:
           inbox_gone_flag = False
@@ -463,6 +485,18 @@ def main():
     send_error_email('An error occurred in main(). Please check.')
     observer.stop()
     sys.exit(1)
+
+#-----------------------------------------------------------------------------
+# repl tools
+
+def slurp(pth):
+  '''Example: make_test_table_sql = slurp('./sql/createtable.sql')'''
+  out = None
+  with open(pth) as f:
+    out = f.read()
+  return out
+
+#-----------------------------------------------------------------------------
 
 if __name__ == '__main__': main()
 
