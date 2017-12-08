@@ -12,30 +12,9 @@ from watchdog.events import FileSystemEventHandler
 import kickshaws as ks # logging, email
 
 #-----------------------------------------------------------------------------#
-#                                                                             #
-#                   ---===((( healthproimporter )))===---                     #
-#                                                                             #
+#                              healthproimporter                              #
 #-----------------------------------------------------------------------------#
-#
-# This program is designed to run as a daemon. It imports a HealthPro CSV
-# into a database table.
-#
-# Prior to running, you should configure the following:
-#   o a folder where a HealthPro CSV can be deposited
-#   o archive folder where CSVs will ultimately be stored
-#   o MS SQL Server database table to hold the data
-#
-# Once running, it does this:
-#   o Watches for a HealthPro CSV file to appear in the inbox folder (location
-#       is configurable)
-#   o Creates a temp version of the CSV that is slightly cleaned up
-#   o Reads the CSV into memory
-#   o Moves file to the archive folder (location also configurable)
-#   o Truncates the  database table (database and table name are configurable)
-#   o Inserts the new data into the table 
-#   o If issue arises, email is sent.
-#
-# Please see README.md for details.
+# See README for details.
 
 #-----------------------------------------------------------------------------
 # The next 2 statements prevent the following error when inserting into db:
@@ -47,7 +26,7 @@ sys.setdefaultencoding('utf-8')
 #-----------------------------------------------------------------------------
 # init
 
-# colummn titles + 4 non-csv rows that HealthPro always includes
+# Total of [row w/ col titles] + [4 non-csv rows that HealthPro csv includes]
 HP_CSV_NONDATA_ROWCOUNT = 5
 
 # Create log object.
@@ -61,15 +40,13 @@ consortium_tag = cfg['consortium_tag']
 inbox_dir = cfg['inbox_dir']
 archive_dir = cfg['archive_dir']
 db_info = cfg['db_info']
-db_name = cfg['db_name']
-db_schema = cfg['db_schema']
-db_table = cfg['db_table'] 
+healthpro_table_name = cfg['healthpro_table_name'] 
+redcap_table_name = cfg['redcap_table_name']
+redcap_job_name = cfg['redcap_job_name']
 from_email = cfg['from_email'] 
 to_email = cfg['to_email'] 
 
 # Flag to indicate monitored folder is gone. 
-# For now, restart the service to clear this flag.
-# We can make fancier later.
 inbox_gone_flag = False
 
 #------------------------------------------------------------------------------
@@ -79,10 +56,12 @@ def ts():
   '''Return current timestamp in milliseconds (as an int).'''
   return int(round(time.time() * 1000))
 
-def fully_qualified_table_name():
-  '''Returns string; eg. [dm_aou].[dbo].[healthpro]
-  This is based on what's in config'''
-  return '[' + db_name + '].[' + db_schema + '].[' + db_table + ']'
+def slurp(pth):
+  '''Example: make_test_table_sql = slurp('./sql/createtable.sql')'''
+  out = None
+  with open(pth) as f:
+    out = f.read()
+  return out
 
 #------------------------------------------------------------------------------
 # email
@@ -123,17 +102,21 @@ def move_file(src, dest):
   return True
 
 #------------------------------------------------------------------------------
-# db utils
+# db 
 
 def db_qy(qy):
   '''Run a SQL query. Returns list of maps.'''
-  with pymssql.connect(**db_info) as conn:
-    cursor = conn.cursor(as_dict=True)
-    cursor.execute(qy)
-    return cursor.fetchall()
+  try:
+    with pymssql.connect(**db_info) as conn:
+      cursor = conn.cursor(as_dict=True)
+      cursor.execute(qy)
+      return cursor.fetchall()
+  except Exception, ex:
+    log.error(str(ex))
+    raise e
 
 def db_stmt(stmt):
-  '''Execute a SQL DDL/DML statement. Use db_qy instead for queries. Throws.'''
+  '''Execute a SQL DDL/DML statement. Doesn't return anything. Throws.'''
   try:
     with pymssql.connect(**db_info) as conn:
       cursor = conn.cursor()
@@ -143,10 +126,13 @@ def db_stmt(stmt):
     log.error(str(e))
     raise e
 
+def db_trunc_table(table_name):
+  stmt = 'truncate table ' + table_name
+  db_stmt(stmt) 
+
 def db_executemany(stmt, tuples):
   '''Execute a parameterized statement for a collection of rows.
-  tuples should be a sequence of tuples (not maps).
-  Use db_qy instead for queries. Throws.'''
+  tuples should be a sequence of tuples (not maps). Throws.'''
   try:
     with pymssql.connect(**db_info) as conn:
       cursor = conn.cursor()
@@ -156,13 +142,13 @@ def db_executemany(stmt, tuples):
     log.error(str(e))
     raise e
 
-def parameterized_insert_stmt(data):
+def parameterized_insert_stmt(table_name, data):
   '''data should be a sequence of maps.
   See: http://pymssql.org/en/stable/pymssql_examples.html'''
   stmt = u''
   try:
     stmt = ( u''
-           + 'insert into ' + fully_qualified_table_name()
+           + 'insert into ' + table_name
            + ' ([' 
            + '],['.join(data[0]) # All rows should have same keys.
            + ']) values ('
@@ -173,15 +159,54 @@ def parameterized_insert_stmt(data):
     raise ex
   return stmt
 
-def db_insert_many(data):
+def db_insert_many(table_name, data):
   '''Takes a seq of maps. Doesn't return anything. Throws.'''
   try:
-    stmt = parameterized_insert_stmt(data) 
+    stmt = parameterized_insert_stmt(table_name, data) 
     tuples = map(lambda mp: tuple([mp[k] for k in mp]), data)
     db_executemany(stmt, tuples)
   except Exception, ex:
     log.error(str(ex))
     raise ex
+
+def db_start_job(job_name):
+  '''Start a SQL Server Agent job. Returns immediately.'''
+  try:
+    with pymssql.connect(**db_info) as conn:
+      cursor = conn.cursor()
+      cursor.callproc('msdb.dbo.sp_start_job', (job_name,))
+      conn.commit()
+  except Exception, e:
+    log.error(str(e))
+    raise e
+
+def db_is_job_idle(job_name):
+  '''job_name should be a SQL Server Agent job name. Returns boolean.'''
+  result = []
+  try:
+    with pymssql.connect(**db_info) as conn:
+      cursor = conn.cursor(as_dict=True)
+      stmt = "exec msdb.dbo.sp_help_job @job_name=N'" + job_name + "'"
+      cursor.execute(stmt) 
+      result = cursor.fetchall()
+  except Exception, e:
+    log.error(str(e))
+    raise e
+  return result[0]['current_execution_status'] == 4 # 4 means idle.
+
+def db_last_run_succeeded(job_name):
+  '''job_name should be a SQL Server Agent job name. Returns boolean.'''
+  result = []
+  try:
+    with pymssql.connect(**db_info) as conn:
+      cursor = conn.cursor(as_dict=True)
+      stmt = "exec msdb.dbo.sp_help_job @job_name=N'" + job_name + "'"
+      cursor.execute(stmt) 
+      result = cursor.fetchall()
+  except Exception, e:
+    log.error(str(e))
+    raise e
+  return result[0]['last_run_outcome'] == 1 # 4 means outome of succeeded.
 
 #------------------------------------------------------------------------------
 # startup checks
@@ -237,7 +262,8 @@ def check_filename_format(fpath):
 def check_char_encoding_is_utf8sig(fpath):
   '''Confirm that the character encoding of the file is utf-8 with
   a BOM (byte-order marker) -- in Python this is normally tagged as
-  'utf_8_sig' or 'UTF-8-SIG', etc.'''
+  'utf_8_sig' or 'UTF-8-SIG', etc.
+  See also: comment on function check_hp_csv_format below.'''
   f = open(fpath, 'rb') # read as raw bytes
   raw = f.read()
   rslt = chardet.detect(raw)
@@ -272,15 +298,15 @@ def check_hp_csv_format(fpath):
     d = rows[-1] == last_row
   return (a and b and c and d)
 
-def db_curr_rowcount():
+def db_curr_rowcount(table_name):
   '''Returns int.'''
-  qy = 'select count(*) as count from ' + fully_qualified_table_name()
+  qy = 'select count(*) as count from ' + table_name 
   rslt = db_qy(qy)
   return rslt[0]['count']
 
 def check_csv_rowcount(fpath):
   '''Rows in CSV must be >= rows in db.'''
-  db_rowcount =  db_curr_rowcount()
+  db_rowcount =  db_curr_rowcount(healthpro_table_name)
   csv_rowcount = -1
   with codecs.open(fpath, 'r', encoding='utf_8_sig') as f:
     # Note: rows in f will be of type unicode.
@@ -337,20 +363,62 @@ def handle_csv(fname):
   return data
 
 #------------------------------------------------------------------------------
-# load data into db
-
-def db_trunc_table(table_name):
-  stmt = 'truncate table ' + fully_qualified_table_name()
-  db_stmt(stmt) 
+# load healthpro and redcap data
 
 def load_data_into_db(table_name, data):
   db_trunc_table(table_name)
-  db_insert_many(data) 
+  db_insert_many(table_name, data) 
 
+def redcap_rowcount():
+  return db_curr_rowcount(redcap_table_name)
+
+# TODO the pattern here can be abstracted out for any 
+# occasion we need to run a SQL Server job and poll for 
+# it to finish.
+def refresh_redcap_table():
+  log.info('Before truncating REDCap table, rowcount is {}.' \
+           ''.format(redcap_rowcount()))
+  log.info('About to truncate REDCap data table...')
+  db_trunc_table(redcap_table_name)
+  log.info('Truncated REDCap data table; rowcount is {} (should be 0).' \
+          ''.format(redcap_rowcount()))
+  log.info('About to repopulate REDCap table from source by calling SQL ' \
+          +'Server Agent job [{}].'.format(redcap_job_name))
+  db_start_job(redcap_job_name)
+  # Below we poll to see if the job has finished; when finished we check if
+  # it was successful. If the job is still running past the designated
+  # threshold, then we raise an exception, with the assumption that something
+  # is wrong.
+  waitfor = 480 # 8 minutes.
+  interval = 10
+  havewaited = 0
+  while True:
+    time.sleep(interval)
+    if not db_is_job_idle(redcap_job_name):
+      havewaited += interval
+      log.info('The job [{}] is not idle yet; waiting ...' \
+               ''.format(redcap_job_name))
+      if havewaited > waitfor:
+        raise Exception('Runtime for job [{}] has exceeded {}. Raising ' \
+                        'exception.'.format(redcap_job_name, waitfor))
+      else:
+        continue
+    else:
+      break
+  if not db_last_run_succeeded(redcap_job_name):
+    msg = 'The job [{}] did not run successfully.'.format(redcap_job_name)
+    log.error(msg)
+    raise Exception(msg)
+  else:
+    log.info('Successfully ran [{}]. REDCap table rowcount: [{}].' \
+            ''.format(redcap_job_name, redcap_rowcount()))
+    return True 
+  
 #------------------------------------------------------------------------------
 # driver
 
 def process_file(path):
+  log.info('----------process_file called------------------------------------')
   try:
     # sleep to ensure process writing to file is finished before we start.
     # E.g., if downloading directly into inbox folder using a browser, the
@@ -400,15 +468,21 @@ def process_file(path):
       send_notice_email(msg)
       return
     log.info('About to load into database.')
-    load_data_into_db(db_table, data)
+    load_data_into_db(healthpro_table_name, data)
     log.info('Successfully loaded into database.')
     csv_rowcount = len(data)
-    db_rowcount = db_curr_rowcount()
+    db_rowcount = db_curr_rowcount(healthpro_table_name)
     log.info('Stats: csv rowcount: [' + str(csv_rowcount) + ']; '\
              'db rowcount: [' + str(db_rowcount) + '].')
     if csv_rowcount == db_rowcount:
       log.info('Processed ' + path + ' successfully!')
-      send_success_email()
+      # Now that we're done wtih the HealthPro side, refresh our REDCap data.
+      if refresh_redcap_table():
+        log.info('Refreshed REDCap data successfully!')
+        log.info('Everything is done. Sending success email.')
+        send_success_email()
+      else:
+        raise Exception('Something went wrong when refreshing REDCap data.')
     else:
       log.error('Rowcounts do not match.')
       send_error_email('Final rowcounts do not match; please check.')
@@ -426,9 +500,8 @@ def main():
   print 'Starting main...'
   log.info('--------------------------------------------------------------------')
   log.info('HealthPro CSV Ingester service started.')
-  log.info('Details about database from config file: Server: {}, Database: {}, '\
-           'Schema: {}, Table: {}' \
-           ''.format(db_info['host'], db_name, db_schema, db_table))
+  log.info('Details about database from config file: Server: {}, DB Table: {}, '\
+           ''.format(db_info['host'], healthpro_table_name))
   observer = PollingObserver(timeout=5) # check every 5 seconds
   try:
     if not do_startup_checks():
@@ -485,16 +558,6 @@ def main():
     send_error_email('An error occurred in main(). Please check.')
     observer.stop()
     sys.exit(1)
-
-#-----------------------------------------------------------------------------
-# repl tools
-
-def slurp(pth):
-  '''Example: make_test_table_sql = slurp('./sql/createtable.sql')'''
-  out = None
-  with open(pth) as f:
-    out = f.read()
-  return out
 
 #-----------------------------------------------------------------------------
 

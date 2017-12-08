@@ -20,6 +20,8 @@ After creating a _virtualenv_ (recommended), install by running:
 
 ### enclave folder
 
+TODO update config format
+
 Create a folder named ````enclave```` which will be a subdir of your working directory. Put ````healthproimporter_config.json```` in it. Customize the contents:
 
     { "inbox_dir" : "/path/to/inbox"
@@ -62,7 +64,11 @@ Use Watchdog's PollingObserver (rather than the vanilla Observer) to observe fil
 https://github.com/seanpompea/healthproimporter
 
 
-### Technical Links
+### Technical Notes
+
+* Transact-SQL comamnds for running and monitoring SQL Server Agent jobs
+  * sp_start_job -- https://docs.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-start-job-transact-sql
+  * sp_help_job -- ttps://docs.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-help-job-transact-sql 
 
 * Watchdog
   * https://pypi.python.org/pypi/watchdog
