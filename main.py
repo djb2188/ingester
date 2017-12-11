@@ -113,7 +113,7 @@ def db_qy(qy):
       return cursor.fetchall()
   except Exception, ex:
     log.error(str(ex))
-    raise e
+    raise ex
 
 def db_stmt(stmt):
   '''Execute a SQL DDL/DML statement. Doesn't return anything. Throws.'''
@@ -206,7 +206,21 @@ def db_last_run_succeeded(job_name):
   except Exception, e:
     log.error(str(e))
     raise e
-  return result[0]['last_run_outcome'] == 1 # 4 means outome of succeeded.
+  return result[0]['last_run_outcome'] == 1 # 1 means succeeded.
+
+def db_columns_for(table_name):
+  '''Expects table_name to be fully-qualified table name with brackets.
+  Example: [foo].[dbo].[bar]. Also expects database table to have an
+  extra column named 'rid' (which is not part of the HealhPro CSV).'''
+  # Get specific db and table names by themselves; needed 
+  # for subsequent query.
+  just_db = table_name[1:table_name.find(']')]
+  just_table = table_name[table_name.rfind('[')+1:-1]
+  result = db_qy("select column_name from " + just_db 
+                + ".information_schema.columns" 
+                + " where table_name = N'" + just_table +"'")
+  cols = [x['column_name'] for x in result if x['column_name'] != 'rid']
+  return cols
 
 #------------------------------------------------------------------------------
 # startup checks
@@ -313,18 +327,13 @@ def check_csv_rowcount(fpath):
     csv_rowcount = sum(1 for row in f) - HP_CSV_NONDATA_ROWCOUNT
   return csv_rowcount >= db_rowcount
 
-def get_target_column_names():
-  out = []
-  with codecs.open('column-names.csv', 'r', encoding='utf_8') as f:
-    out = f.read().strip().split(',')
-  return out
-
 def check_csv_column_names(data):
-  '''Column names must match what's in column-names.csv. Recall that
-  data is a seq of maps.'''
-  target_cols = get_target_column_names()
+  '''Column names must match what's in the database (exception being the 
+  extra column 'rid' which is not part of the CSV). Recall that data is a 
+  seq of maps.'''
+  db_cols = db_columns_for(healthpro_table_name)
   csv_cols = data[0].keys() # Any row from data will do.
-  return set(csv_cols) == set(target_cols)
+  return set(csv_cols) == set(db_cols)
 
 #------------------------------------------------------------------------------
 # csv handling
