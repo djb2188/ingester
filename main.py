@@ -33,7 +33,7 @@ sys.setdefaultencoding('utf-8')
 HP_CSV_NONDATA_ROWCOUNT = 5
 
 # Create log object.
-log = ks.create_logger('hpimporter.log', 'main')
+log = ks.create_logger('hpimporter.log', 'main-logger')
 
 # Load configuration info from config file.
 config_fname = 'enclave/healthproimporter_config.json'
@@ -71,6 +71,15 @@ def slurp(pth):
   with open(pth) as f:
     out = f.read()
   return out
+
+def unadorned_table_name(table_name):
+  '''Takes a fully qualified table name that uses brackets, and 
+  returns just the unardorned table name by itself.
+  E.g., 
+    input: '[dm_aou].[dbo].[healthpro]'
+    output: 'healthpro
+  '''
+  return table_name[table_name.rfind('[')+1:-1]
 
 #------------------------------------------------------------------------------
 # email
@@ -455,7 +464,7 @@ def refresh_redcap_table():
   else:
     log.info('Successfully ran [{}]. REDCap table rowcount: [{}].' \
             ''.format(redcap_job_name, redcap_rowcount()))
-    update_metadata('redcap', 'refreshed')    
+    update_metadata(unadorned_table_name(redcap_table_name), 'refreshed')
     return True 
   
 #------------------------------------------------------------------------------
@@ -522,7 +531,7 @@ def process_file(path):
       log.info('Processed ' + path + ' successfully!')
       # Note this refresh in the metadata table.
       hp_csv_datetime_obj = datetime_from_csv_filename(path)
-      just_table = healthpro_table_name[healthpro_table_name.rfind('[')+1:-1]
+      just_table = unadorned_table_name(healthpro_table_name)
       update_metadata(just_table, 'refreshed', hp_csv_datetime_obj)
       # Now that we're done wtih the HealthPro side, refresh our REDCap data.
       if refresh_redcap_table():
