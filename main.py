@@ -7,6 +7,9 @@ import csv
 import codecs
 import chardet
 import pymssql
+import dateutil # dateutil.tz
+from dateutil.parser import * # parse()
+import pytz
 from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 import kickshaws as ks # logging, email
@@ -41,13 +44,19 @@ inbox_dir = cfg['inbox_dir']
 archive_dir = cfg['archive_dir']
 db_info = cfg['db_info']
 healthpro_table_name = cfg['healthpro_table_name'] 
+metadata_table_name = cfg['metadata_table_name']
 redcap_table_name = cfg['redcap_table_name']
 redcap_job_name = cfg['redcap_job_name']
 from_email = cfg['from_email'] 
 to_email = cfg['to_email'] 
+agent_job_timeout = cfg['agent_job_timeout']
 
 # Flag to indicate monitored folder is gone. 
 inbox_gone_flag = False
+
+# Some specific errors we want log/email differently.
+class AgentJobThresholdException(Exception):
+  pass
 
 #------------------------------------------------------------------------------
 # general utils
@@ -371,8 +380,32 @@ def handle_csv(fname):
   move_file(fname, archive_dir)
   return data
 
+def datetime_from_csv_filename(path):
+  'Returns a datetime object with tzinfo set to UTC.'
+  fname = os.path.basename(path)
+  # Get just the date and time from the file -- eg '20171214-203427'
+  datetime_str = fname[fname.rfind('_')+1:fname.find('.csv')]
+  datetime_obj_step = parse(datetime_str) # dateutil library
+  # We'll be explicit and set timezone propery to UTC (since this is
+  # what the CSV filename uses.).
+  datetime_obj_final = datetime_obj_step.replace(tzinfo=pytz.utc)
+  return datetime_obj_final
+
 #------------------------------------------------------------------------------
 # load healthpro and redcap data
+
+def update_metadata(tag, details, dt=None):
+  '''dt is optional; should be a datetime object with tz of UTC. (if left out,
+  the database uses the current time.) SQL Server datetime does not have
+  any notion of time zone; we convert to local time zone first.'''
+  if dt:
+    local_tz = dateutil.tz.tzlocal()
+    dt_local = dt.astimezone(local_tz)
+    db_insert_many(metadata_table_name
+                , [{'tag': tag, 'details': details, 'ts': dt_local}])
+  else:
+    db_insert_many(metadata_table_name
+                , [{'tag': tag, 'details': details}])
 
 def load_data_into_db(table_name, data):
   db_trunc_table(table_name)
@@ -398,7 +431,7 @@ def refresh_redcap_table():
   # it was successful. If the job is still running past the designated
   # threshold, then we raise an exception, with the assumption that something
   # is wrong.
-  waitfor = 480 # 8 minutes.
+  waitfor = agent_job_timeout
   interval = 10
   havewaited = 0
   while True:
@@ -408,19 +441,21 @@ def refresh_redcap_table():
       log.info('The job [{}] is not idle yet; waiting ...' \
                ''.format(redcap_job_name))
       if havewaited > waitfor:
-        raise Exception('Runtime for job [{}] has exceeded {}. Raising ' \
-                        'exception.'.format(redcap_job_name, waitfor))
+        raise AgentJobThresholdException('Runtime for job [{}] has exceeded '\
+            'specified threshold of {} seconds.' \
+            ''.format(redcap_job_name, waitfor))
       else:
         continue
     else:
       break
   if not db_last_run_succeeded(redcap_job_name):
-    msg = 'The job [{}] did not run successfully.'.format(redcap_job_name)
+    msg = 'The Agent job [{}] did not run successfully.'.format(redcap_job_name)
     log.error(msg)
     raise Exception(msg)
   else:
     log.info('Successfully ran [{}]. REDCap table rowcount: [{}].' \
             ''.format(redcap_job_name, redcap_rowcount()))
+    update_metadata('redcap', 'refreshed')    
     return True 
   
 #------------------------------------------------------------------------------
@@ -485,6 +520,10 @@ def process_file(path):
              'db rowcount: [' + str(db_rowcount) + '].')
     if csv_rowcount == db_rowcount:
       log.info('Processed ' + path + ' successfully!')
+      # Note this refresh in the metadata table.
+      hp_csv_datetime_obj = datetime_from_csv_filename(path)
+      just_table = healthpro_table_name[healthpro_table_name.rfind('[')+1:-1]
+      update_metadata(just_table, 'refreshed', hp_csv_datetime_obj)
       # Now that we're done wtih the HealthPro side, refresh our REDCap data.
       if refresh_redcap_table():
         log.info('Refreshed REDCap data successfully!')
@@ -495,9 +534,14 @@ def process_file(path):
     else:
       log.error('Rowcounts do not match.')
       send_error_email('Final rowcounts do not match; please check.')
+  except AgentJobThresholdException, aex:
+    log.error(str(aex))
+    send_error_email('{}. (It was started after ingesting {}.) Please check.' \
+        ''.format(str(aex), fname))
   except Exception, ex:
     log.error(str(ex))
-    send_error_email('An error occurred while processing {}. Please check.'.format(fname))
+    send_error_email('An error occurred while processing {}. Please check.' \
+        ''.format(fname))
 
 def make_handler_obj(on_created_func):
   '''Create and return a new FileSystemEventHandler object (this class

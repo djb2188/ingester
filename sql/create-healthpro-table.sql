@@ -1,5 +1,5 @@
-CREATE TABLE [dm_aou].[dbo].[healthpro_dev] (
-  [rid] bigint not null identity primary key,
+CREATE TABLE [dm_aou].[dbo].[healthpro] (
+  [rid] bigint not null identity(1,1) primary key,
 	[PMI ID] NVARCHAR(64) NULL, 
 	[Biobank ID] NVARCHAR(64) NULL, 
 	[Last Name] NVARCHAR(256) NULL, 
