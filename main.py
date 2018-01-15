@@ -18,6 +18,7 @@ import kickshaws as ks # logging, email
 #                              healthproimporter                              #
 #-----------------------------------------------------------------------------#
 # See README for details.
+# Written by Sean Pompea (http://seanpompea.sdf.org)
 
 #-----------------------------------------------------------------------------
 # The next 2 statements prevent the following error when inserting into db:
@@ -404,7 +405,8 @@ def datetime_from_csv_filename(path):
 # load healthpro and redcap data
 
 def update_metadata(tag, details, dt=None):
-  '''dt is optional; should be a datetime object with tz of UTC. (if left out,
+  '''Add a new row in the metadata table.
+  dt arg is optional; should be a datetime object with tz of UTC. (if left out,
   the database uses the current time.) SQL Server datetime does not have
   any notion of time zone; we convert to local time zone first.'''
   if dt:
@@ -413,6 +415,7 @@ def update_metadata(tag, details, dt=None):
     db_insert_many(metadata_table_name
                 , [{'tag': tag, 'details': details, 'ts': dt_local}])
   else:
+    # We're just inserting one row; but we use db_insert_many for convenience.
     db_insert_many(metadata_table_name
                 , [{'tag': tag, 'details': details}])
 
