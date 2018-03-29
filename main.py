@@ -494,9 +494,12 @@ def process_file(path):
     if not check_char_encoding_is_utf8sig(path):
       msg = 'The character encoding of the deposited CSV ({}) '\
             'doesn\'t match what\'s '\
-            'expected; so, it was not processed. One way this could happen '\
+            'expected; so, it was not processed. \n\nOne way this could happen '\
             'is if the file were opened in Excel or another application and then '\
             'saved from within that application (even when saved as a CSV).'\
+            ' \n\nAnother possibility is that a slow connection to the network folder '\
+            'resulted in the Ingester attempting to process the file before it had '\
+            'completely copied over.'\
             ''.format(fname)  
       log.info(msg)
       send_notice_email(msg)
